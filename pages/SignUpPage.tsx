@@ -178,6 +178,15 @@ const SignUpPage: React.FC = () => {
               {DOMAINS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
+          <div className="md:col-span-2">
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-3">Create Password</label>
+            <input 
+              type="password" required
+              value={formData.password}
+              onChange={(e) => setFormData({...formData, password: e.target.value})}
+              className="w-full px-5 py-4 rounded-2xl border border-slate-100 bg-slate-50 outline-none focus:ring-4 focus:ring-blue-50 transition-all font-bold text-slate-500"
+            />
+          </div>
 
           <div className="md:col-span-2 mt-6">
             <button 

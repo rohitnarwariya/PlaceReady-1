@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   auth, 
   db, 
@@ -15,6 +15,49 @@ import {
   serverTimestamp
 } from '../firebase';
 import { User, ChatRequestReason, Answer } from '../types';
+
+// Pre-configured dummy profiles for mock IDs used in Company Insight section
+const DUMMY_PROFILES: Record<string, any> = {
+  's1': {
+    uid: 's1',
+    name: 'Rahul Sharma',
+    currentCompany: 'Google',
+    branch: 'CSE',
+    college: 'IIT Bombay',
+    year: 4,
+    section: 'DSA & Algorithms',
+    linkedinUrl: 'https://linkedin.com/in/rahul-sharma',
+    bio: 'Placed at Google as SDE-1. Specialized in competitive programming and system design. Happy to help with DSA roadmaps and technical interview strategies.',
+    isVerified: true,
+    profilePic: 'https://i.pravatar.cc/150?u=s1'
+  },
+  's6': {
+    uid: 's6',
+    name: 'Ishita Roy',
+    currentCompany: 'Amazon',
+    branch: 'CSE',
+    college: 'BITS Pilani',
+    year: 4,
+    section: 'Web Development',
+    linkedinUrl: 'https://linkedin.com/in/ishita-roy',
+    bio: 'Incoming SDE at Amazon. Full-stack developer with a passion for scalable architectures. STAR method specialist for HR rounds and behavioral culture fit.',
+    isVerified: true,
+    profilePic: 'https://i.pravatar.cc/150?u=s6'
+  },
+  's2': {
+    uid: 's2',
+    name: 'Priya Malhotra',
+    currentCompany: 'Microsoft',
+    branch: 'IT',
+    college: 'NIT Trichy',
+    year: 4,
+    section: 'Full Stack Development',
+    linkedinUrl: 'https://linkedin.com/in/priya-m',
+    bio: 'Software Engineer @ Microsoft. Focus on cloud technologies and backend engineering. Mentoring on resume building and navigating off-campus opportunities.',
+    isVerified: true,
+    profilePic: 'https://i.pravatar.cc/150?u=s2'
+  }
+};
 
 const SeniorProfilePage: React.FC = () => {
   const { id } = useParams();
@@ -44,40 +87,46 @@ const SeniorProfilePage: React.FC = () => {
 
     const loadProfile = async (targetId: string) => {
       try {
-        const docRef = doc(db, 'users', targetId);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setSenior(data);
-          
-          // Fetch answers by this senior
-          const q = query(
-            collection(db, 'answers'), 
-            where('authorId', '==', targetId)
-          );
-          
-          const querySnapshot = await getDocs(q);
-          const seniorAnswers = querySnapshot.docs.map(doc => {
-            const aData = doc.data();
-            return {
-              ...aData,
-              id: doc.id,
-              timestamp: aData.createdAt ? new Date(aData.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent'
-            } as any;
-          });
-
-          // Sort client-side to avoid index requirement
-          seniorAnswers.sort((a, b) => {
-            const timeA = a.createdAt?.toDate?.()?.getTime() || 0;
-            const timeB = b.createdAt?.toDate?.()?.getTime() || 0;
-            return timeB - timeA;
-          });
-          
-          setAnswers(seniorAnswers as Answer[]);
+        // 1. Check Dummy Data first
+        if (DUMMY_PROFILES[targetId]) {
+          setSenior(DUMMY_PROFILES[targetId]);
+          // For dummy users, we might still want to fetch real Firestore answers if they exist
         } else {
-          setError('Profile not found.');
+          // 2. Fallback to Firestore
+          const docRef = doc(db, 'users', targetId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setSenior(docSnap.data());
+          } else {
+            setError('Profile not found.');
+            setLoading(false);
+            return;
+          }
         }
+        
+        // Fetch answers by this senior (real or dummy)
+        const q = query(
+          collection(db, 'answers'), 
+          where('authorId', '==', targetId)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        const seniorAnswers = querySnapshot.docs.map(doc => {
+          const aData = doc.data();
+          return {
+            ...aData,
+            id: doc.id,
+            timestamp: aData.createdAt ? new Date(aData.createdAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent'
+          } as any;
+        });
+
+        seniorAnswers.sort((a, b) => {
+          const timeA = a.createdAt?.toDate?.()?.getTime() || 0;
+          const timeB = b.createdAt?.toDate?.()?.getTime() || 0;
+          return timeB - timeA;
+        });
+        
+        setAnswers(seniorAnswers as Answer[]);
       } catch (err) {
         console.error("Error loading senior profile:", err);
         setError('Failed to load profile details.');
@@ -95,7 +144,6 @@ const SeniorProfilePage: React.FC = () => {
 
     setSubmitting(true);
     try {
-      // Logic updated to match specified collections structure
       await addDoc(collection(db, 'chatRequests'), {
         fromUserId: auth.currentUser.uid,
         fromUserName: currentUser.name,
@@ -167,13 +215,13 @@ const SeniorProfilePage: React.FC = () => {
               
               <div className="flex flex-wrap items-center justify-center gap-3 mb-12">
                 <span className="bg-slate-900 text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest">
-                  {senior.college || 'Elite Campus'}
+                   {senior.currentCompany ? `Placed @ ${senior.currentCompany}` : (senior.college || 'Elite Campus')}
                 </span>
                 <span className="bg-blue-50 text-blue-600 px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100">
                   {senior.branch || 'CSE'} Specialist
                 </span>
                 <span className="bg-emerald-50 text-emerald-600 px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-100">
-                  Batch {senior.year || '4'}
+                  Batch {senior.year || '4'} • {senior.college || 'Verified Campus'}
                 </span>
               </div>
 
@@ -219,15 +267,15 @@ const SeniorProfilePage: React.FC = () => {
                 <section>
                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-6 flex items-center">
                     <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-3"></span>
-                    Stats
+                    Expertise Domain
                   </h3>
                   <div className="grid grid-cols-1 gap-4">
                     <div className="bg-white p-6 rounded-3xl border border-slate-100 flex items-center justify-between">
-                      <span className="text-[10px] font-black text-slate-400 uppercase">Verified Contributions</span>
-                      <span className="text-2xl font-black text-slate-900">{answers.length}</span>
+                      <span className="text-[10px] font-black text-slate-400 uppercase">Primary Track</span>
+                      <span className="text-xl font-black text-slate-900">{senior.section || 'General Intelligence'}</span>
                     </div>
                     <div className="bg-white p-6 rounded-3xl border border-slate-100 flex items-center justify-between">
-                      <span className="text-[10px] font-black text-slate-400 uppercase">Reputation Score</span>
+                      <span className="text-[10px] font-black text-slate-400 uppercase">Trust Score</span>
                       <span className="text-2xl font-black text-blue-600">{(answers.length * 12 + 100)}</span>
                     </div>
                   </div>

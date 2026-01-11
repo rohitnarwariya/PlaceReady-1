@@ -118,12 +118,25 @@ const Navbar: React.FC = () => {
 
     const uid = user.uid || user.id;
 
-    // Chat Request Listener for Badge
+    // Separate counts for stability
+    let pendingReqsCount = 0;
+    let unreadMessagesCount = 0;
+
+    const updateBadgeTotal = () => {
+      setTotalBadgeCount(pendingReqsCount + unreadMessagesCount);
+    };
+
+    // Chat Request Listener
     const chatReqQuery = query(
       collection(db, 'chatRequests'),
       where('toUserId', '==', uid),
       where('status', '==', 'pending')
     );
+
+    const unsubscribeChatReqs = onSnapshot(chatReqQuery, (snapshot) => {
+      pendingReqsCount = snapshot.size;
+      updateBadgeTotal();
+    });
 
     // Message/Chat Notification Listener
     const chatsQuery = query(
@@ -134,21 +147,15 @@ const Navbar: React.FC = () => {
       )
     );
 
-    const unsubscribeChatReqs = onSnapshot(chatReqQuery, (reqSnapshot) => {
-      const pendingReqs = reqSnapshot.size;
-      
-      const unsubscribeChats = onSnapshot(chatsQuery, (chatSnapshot) => {
-        const unreadChats = chatSnapshot.docs.filter(doc => {
-          const data = doc.data();
-          return data.seenBy ? !data.seenBy.includes(uid) : false;
-        }).length;
-        
-        setTotalBadgeCount(pendingReqs + unreadChats);
-      });
-
-      return () => unsubscribeChats();
+    const unsubscribeChats = onSnapshot(chatsQuery, (snapshot) => {
+      unreadMessagesCount = snapshot.docs.filter(doc => {
+        const data = doc.data();
+        return data.seenBy ? !data.seenBy.includes(uid) : false;
+      }).length;
+      updateBadgeTotal();
     });
 
+    // Question/Activity Notifications
     if (user.role === 'senior' && user.section) {
       const q = query(
         collection(db, 'questions'), 
@@ -156,7 +163,7 @@ const Navbar: React.FC = () => {
         limit(50)
       );
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      const unsubscribeQs = onSnapshot(q, (snapshot) => {
         let filterDate: Date | null = null;
         if (lastSeenTime) {
           const parsed = lastSeenTime.toDate ? lastSeenTime.toDate() : new Date(lastSeenTime);
@@ -189,7 +196,8 @@ const Navbar: React.FC = () => {
       });
       return () => {
         unsubscribeChatReqs();
-        unsubscribe();
+        unsubscribeChats();
+        unsubscribeQs();
       };
     } else if (user.role === 'junior') {
       const q = query(
@@ -199,7 +207,7 @@ const Navbar: React.FC = () => {
         limit(20)
       );
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      const unsubscribeNotifs = onSnapshot(q, (snapshot) => {
         const notifs = snapshot.docs.map(doc => {
           const data = doc.data();
           return {
@@ -223,7 +231,13 @@ const Navbar: React.FC = () => {
       });
       return () => {
         unsubscribeChatReqs();
-        unsubscribe();
+        unsubscribeChats();
+        unsubscribeNotifs();
+      };
+    } else {
+      return () => {
+        unsubscribeChatReqs();
+        unsubscribeChats();
       };
     }
   }, [user, lastSeenTime]);
@@ -281,7 +295,7 @@ const Navbar: React.FC = () => {
   ];
 
   return (
-    <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-lg border-b border-slate-100 px-10 py-8 flex items-center justify-between">
+    <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-lg border-b border-slate-100 px-10 py-6 flex items-center justify-between">
       <Link to="/" className="text-3xl font-black text-black tracking-tighter flex items-center group transition-transform active:scale-95">
         <span className="text-blue-600 mr-2 transition-transform group-hover:scale-125 group-hover:rotate-12 inline-block">•</span> 
         PlaceReady
@@ -294,17 +308,17 @@ const Navbar: React.FC = () => {
             <Link 
               key={link.path}
               to={link.path} 
-              className={`relative group text-sm font-black uppercase tracking-widest transition-all duration-300 hover:-translate-y-0.5 active:scale-95 py-1 flex items-center gap-1.5 ${
+              className={`relative group text-[11px] font-black uppercase tracking-[0.2em] transition-all duration-300 hover:-translate-y-0.5 active:scale-95 py-1 flex items-center gap-2 ${
                 isActive ? 'text-blue-600' : 'text-slate-500 hover:text-blue-600'
               }`}
             >
               {link.name}
               {link.hasBadge && (
-                <span className="flex-shrink-0 w-6 h-6 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center animate-pulse shadow-md border-2 border-white">
+                <span className="flex-shrink-0 min-w-[22px] h-[22px] px-1.5 bg-rose-600 text-white text-[10px] font-black rounded-lg flex items-center justify-center animate-in zoom-in duration-300 shadow-lg shadow-rose-200 border-2 border-white">
                   {link.badgeCount}
                 </span>
               )}
-              <span className={`absolute bottom-0 left-0 h-[2px] bg-blue-600 transition-transform duration-300 origin-left ${
+              <span className={`absolute bottom-0 left-0 h-[2.5px] bg-blue-600 transition-transform duration-300 origin-left ${
                 isActive ? 'w-full scale-x-100' : 'w-full scale-x-0 group-hover:scale-x-100'
               }`}></span>
             </Link>
@@ -318,25 +332,25 @@ const Navbar: React.FC = () => {
             <div className="relative" ref={notifRef}>
               <button 
                 onClick={toggleNotif}
-                className={`p-2 rounded-xl transition-all duration-300 hover:bg-slate-100 active:scale-90 relative ${isNotifOpen ? 'text-blue-600' : 'text-slate-400'}`}
+                className={`p-2.5 rounded-xl transition-all duration-300 hover:bg-slate-100 active:scale-90 relative ${isNotifOpen ? 'text-blue-600' : 'text-slate-400'}`}
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
                 {notifications.length > 0 && (
-                  <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
+                  <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white shadow-sm"></span>
                 )}
               </button>
 
               {isNotifOpen && (
-                <div className="absolute top-full right-0 mt-4 w-80 bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
-                  <div className="p-5 border-b border-slate-50 flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                      {user.role === 'senior' ? `Activity in ${user.section}` : 'Activity Feed'}
+                <div className="absolute top-full right-0 mt-4 w-80 bg-white rounded-3xl shadow-[0_25px_60px_rgba(15,23,42,0.15)] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+                  <div className="p-5 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                      {user.role === 'senior' ? `Intel: ${user.section}` : 'Activity Monitor'}
                     </span>
                     {notifications.length > 0 && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
+                  <div className="max-h-96 overflow-y-auto">
                     {notifications.length > 0 ? (
                       notifications.map(notif => (
                         <div 
@@ -349,23 +363,20 @@ const Navbar: React.FC = () => {
                               setIsNotifOpen(false);
                             }
                           }}
-                          className="p-5 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer group"
+                          className="p-5 hover:bg-blue-50/50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer group"
                         >
-                          <p className="text-xs font-bold text-slate-700 group-hover:text-blue-600 transition-colors line-clamp-2">
-                            {notif.type === 'reply' ? notif.title : `New Question: ${notif.title}`}
+                          <p className="text-xs font-bold text-slate-700 group-hover:text-blue-600 transition-colors line-clamp-2 leading-relaxed">
+                            {notif.type === 'reply' ? notif.title : `Consultation Required: ${notif.title}`}
                           </p>
-                          <div className="flex items-center justify-between mt-2.5">
+                          <div className="flex items-center justify-between mt-3">
                             <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest px-2 py-0.5 bg-blue-50 rounded-md">{notif.domain}</span>
                             <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">{notif.time}</p>
                           </div>
-                          {notif.type === 'reply' && (
-                            <span className="mt-2 block text-[9px] font-black text-blue-600 uppercase tracking-widest underline">View Answer</span>
-                          )}
                         </div>
                       ))
                     ) : (
-                      <div className="p-10 text-center">
-                        <p className="text-slate-300 text-xs font-bold italic">No new activity to show</p>
+                      <div className="p-12 text-center">
+                        <p className="text-slate-300 text-[10px] font-black uppercase tracking-widest">No active alerts</p>
                       </div>
                     )}
                   </div>
@@ -375,29 +386,29 @@ const Navbar: React.FC = () => {
 
             <div className="flex items-center space-x-8">
               <Link to="/profile" className="text-right hidden sm:block hover:opacity-70 transition-all active:scale-95 group relative">
-                <p className="text-sm font-black text-slate-900 leading-none group-hover:text-blue-600 transition-colors">{user.name}</p>
-                <span className={`inline-block text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full mt-1.5 transition-all group-hover:shadow-md ${
+                <p className="text-[13px] font-black text-slate-900 leading-none group-hover:text-blue-600 transition-colors">{user.name}</p>
+                <span className={`inline-block text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg mt-1.5 transition-all group-hover:shadow-md ${
                   user.role === 'junior' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'
                 }`}>
-                  {user.yearLabel} {user.role === 'junior' ? 'Junior' : 'Senior'}
+                  {user.yearLabel}
                 </span>
               </Link>
               <button 
                 onClick={handleLogout} 
-                className="relative group text-sm font-black uppercase tracking-widest text-rose-500 hover:text-rose-600 transition-all hover:-translate-y-0.5 active:scale-95 py-1"
+                className="relative group text-[11px] font-black uppercase tracking-[0.2em] text-rose-500 hover:text-rose-600 transition-all hover:-translate-y-0.5 active:scale-95 py-1"
               >
                 Logout
-                <span className="absolute bottom-0 left-0 w-full h-[2px] bg-rose-500 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></span>
+                <span className="absolute bottom-0 left-0 w-full h-[2.5px] bg-rose-500 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></span>
               </button>
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-6">
-            <Link to="/signup" className="relative group text-sm font-black uppercase tracking-widest text-slate-500 hover:text-blue-600 transition-all hover:-translate-y-0.5 active:scale-95 py-1">
+            <Link to="/signup" className="relative group text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-blue-600 transition-all hover:-translate-y-0.5 active:scale-95 py-1">
               Sign Up
-              <span className="absolute bottom-0 left-0 w-full h-[2px] bg-blue-600 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></span>
+              <span className="absolute bottom-0 left-0 w-full h-[2.5px] bg-blue-600 scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></span>
             </Link>
-            <Link to="/login" className="bg-slate-900 text-white text-sm font-black uppercase tracking-widest px-8 py-4 rounded-2xl hover:bg-blue-600 hover:shadow-2xl hover:shadow-blue-200 transition-all hover:-translate-y-1 active:scale-95 shadow-xl shadow-slate-200">
+            <Link to="/login" className="bg-slate-900 text-white text-[11px] font-black uppercase tracking-[0.3em] px-8 py-4 rounded-2xl hover:bg-blue-600 hover:shadow-2xl hover:shadow-blue-200 transition-all hover:-translate-y-1 active:scale-95 shadow-xl shadow-slate-200">
               Sign In
             </Link>
           </div>
