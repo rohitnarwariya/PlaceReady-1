@@ -1,0 +1,48 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /questions/{questionId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow delete, update: if request.auth != null && (getUserData(request.auth.uid).role == 'admin' || request.auth.uid == resource.data.authorId);
+    }
+
+    match /answers/{answerId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow delete: if request.auth != null && (getUserData(request.auth.uid).role == 'admin' || request.auth.uid == resource.data.authorId);
+    }
+
+    // Chat System Rules - Updated for new schema
+    match /chatRequests/{requestId} {
+      allow read: if request.auth != null && (request.auth.uid == resource.data.fromUserId || request.auth.uid == resource.data.toUserId);
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.fromUserId;
+      allow update: if request.auth != null && request.auth.uid == resource.data.toUserId;
+    }
+
+    match /chats/{chatId} {
+      allow read: if request.auth != null && (request.auth.uid == resource.data.userAId || request.auth.uid == resource.data.userBId);
+      allow create: if request.auth != null && (request.auth.uid == request.resource.data.userAId || request.auth.uid == request.resource.data.userBId);
+      allow update: if request.auth != null && (request.auth.uid == resource.data.userAId || request.auth.uid == resource.data.userBId);
+    }
+
+    match /messages/{messageId} {
+      allow read: if request.auth != null && (
+        let chat = get(/databases/$(database)/documents/chats/$(resource.data.chatId)).data;
+        request.auth.uid == chat.userAId || request.auth.uid == chat.userBId
+      );
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.senderId;
+    }
+  }
+}
